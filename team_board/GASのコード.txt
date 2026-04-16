@@ -1,0 +1,223 @@
+const SHEET_NAME = 'シート1';
+
+function doGet(e) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const rows = sheet.getDataRange().getValues();
+  const headers = rows[0];
+  const data = rows.slice(1)
+    .filter(row => row[0] !== '')
+    .map(row => {
+      const obj = {};
+      headers.forEach((h, i) => {
+        const val = row[i];
+        if (h === 'updated' && val instanceof Date) {
+          const month = val.getMonth() + 1;
+          const day = val.getDate();
+          const hh = String(val.getHours()).padStart(2, '0');
+          const mm = String(val.getMinutes()).padStart(2, '0');
+          obj[h] = month + '/' + day + ' ' + hh + ':' + mm;
+        } else {
+          obj[h] = String(val ?? '');
+        }
+      });
+      return obj;
+    });
+  return ContentService
+    .createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const payload = JSON.parse(e.postData.contents);
+
+  if (payload.action === 'update') {
+    const rows = sheet.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][0]) === String(payload.id)) {
+        sheet.getRange(i + 1, 1, 1, 9).setValues([[
+          String(payload.id),
+          payload.name,
+          payload.role,
+          payload.status,
+          payload.ot,
+          payload.comment,
+          payload.updated,
+          payload.location || 'in',
+          payload.email || rows[i][8] || ''
+        ]]);
+        return ContentService
+          .createTextOutput(JSON.stringify({ ok: true }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: 'id not found' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (payload.action === 'add') {
+    sheet.appendRow([
+      String(payload.id),
+      payload.name,
+      payload.role,
+      payload.status,
+      payload.ot,
+      payload.comment,
+      payload.updated,
+      payload.location || 'in',
+      payload.email || ''
+    ]);
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: true }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: false, error: 'unknown action' }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function sendReminderEmails() {
+  const day = new Date().getDay();
+  if (day === 0 || day === 6) {
+    Logger.log('土日のためスキップ');
+    return;
+  }
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const rows = sheet.getDataRange().getValues();
+
+  const today = new Date();
+  const todayY = today.getFullYear();
+  const todayM = today.getMonth();
+  const todayD = today.getDate();
+  Logger.log('========== 実行開始 ==========');
+  Logger.log('今日の日付: ' + todayY + '/' + (todayM+1) + '/' + todayD);
+
+  const unupdated = [];
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row[0]) continue;
+
+    const name    = row[1];
+    const updated = row[6];
+    const email   = row[8];
+
+    Logger.log('---');
+    Logger.log('name: ' + name);
+    Logger.log('updated の型: ' + typeof updated);
+    Logger.log('updated instanceof Date: ' + (updated instanceof Date));
+    Logger.log('updated の値: ' + updated);
+    Logger.log('email: ' + email);
+
+    let isUpdatedToday = false;
+
+    if (updated) {
+      let updatedDate = null;
+      if (updated instanceof Date) {
+        updatedDate = updated;
+        Logger.log('Dateオブジェクトとして取得');
+      } else {
+        updatedDate = new Date(updated);
+        Logger.log('文字列からDateに変換: ' + updatedDate);
+      }
+
+      if (updatedDate && !isNaN(updatedDate.getTime())) {
+        const uy = updatedDate.getFullYear();
+        const um = updatedDate.getMonth();
+        const ud = updatedDate.getDate();
+        Logger.log('updatedDate の年月日: ' + uy + '/' + (um+1) + '/' + ud);
+        Logger.log('今日の年月日:         ' + todayY + '/' + (todayM+1) + '/' + todayD);
+        isUpdatedToday = (uy === todayY && um === todayM && ud === todayD);
+        Logger.log('年一致: ' + (uy === todayY) + ' / 月一致: ' + (um === todayM) + ' / 日一致: ' + (ud === todayD));
+      } else {
+        Logger.log('日付の解析に失敗（Invalid Date）');
+      }
+    } else {
+      Logger.log('updated が空のためスキップ');
+    }
+
+    Logger.log(name + ' | isUpdatedToday: ' + isUpdatedToday);
+
+    if (!isUpdatedToday && email) {
+      unupdated.push({ name, email });
+      Logger.log('メール送信対象に追加');
+    } else if (!email) {
+      Logger.log('メールアドレス未設定のためスキップ');
+    } else {
+      Logger.log('本日更新済みのためスキップ');
+    }
+  }
+
+  Logger.log('---');
+  Logger.log('メール送信対象: ' + unupdated.length + '名');
+
+  if (unupdated.length === 0) {
+    Logger.log('送信対象なし。終了します。');
+    return;
+  }
+
+  unupdated.forEach(function(member) {
+    GmailApp.sendEmail(
+      member.email,
+      '【繁忙ボード】本日のステータス更新をお願いします',
+      member.name + ' さん\n\n本日の繁忙ステータスがまだ更新されていません。\n以下のリンクからステータスを更新してください。\n\n▼ 繁忙ボード\nhttps://sites.google.com/caty-yonekura.co.jp/busy-board/%E3%83%9B%E3%83%BC%E3%83%A0\n\n※このメールは自動送信されています。'
+    );
+    Logger.log(member.name + ' にメール送信しました: ' + member.email);
+  });
+
+  Logger.log('========== 完了 ==========');
+}
+
+function testUpdate() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const rows = sheet.getDataRange().getValues();
+
+  Logger.log('現在の1行目のデータ:');
+  Logger.log('id: ' + rows[1][0]);
+  Logger.log('name: ' + rows[1][1]);
+  Logger.log('location: ' + rows[1][7]);
+  Logger.log('email: ' + rows[1][8]);
+
+  sheet.getRange(2, 1, 1, 9).setValues([[
+    String(rows[1][0]),
+    rows[1][1],
+    rows[1][2],
+    rows[1][3],
+    rows[1][4],
+    rows[1][5],
+    rows[1][6],
+    'out',
+    rows[1][8]
+  ]]);
+
+  Logger.log('書き込み完了');
+
+  const after = sheet.getDataRange().getValues();
+  Logger.log('書き込み後のlocation: ' + after[1][7]);
+}
+
+function testDoGet() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const rows = sheet.getDataRange().getValues();
+  const headers = rows[0];
+  
+  Logger.log('ヘッダー: ' + JSON.stringify(headers));
+  
+  // 後藤さんの行を探す
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][1]).indexOf('後藤') !== -1) {
+      Logger.log('後藤さんの行番号: ' + (i+1));
+      Logger.log('生データ: ' + JSON.stringify(rows[i]));
+      
+      const obj = {};
+      headers.forEach((h, idx) => {
+        obj[h] = String(rows[i][idx] ?? '');
+      });
+      Logger.log('変換後オブジェクト: ' + JSON.stringify(obj));
+      Logger.log('location値: ' + obj['location']);
+    }
+  }
+}

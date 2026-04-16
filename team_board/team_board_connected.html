@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>チーム繁忙ボード</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #F5F4F0; --surface: #FFFFFF;
+    --border: rgba(0,0,0,0.08); --border-hover: rgba(0,0,0,0.18);
+    --text-primary: #1A1917; --text-secondary: #6B6A66; --text-muted: #A8A7A3;
+    --radius: 14px; --radius-sm: 8px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
+    --shadow-hover: 0 2px 8px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.07);
+  }
+  body { font-family: 'Noto Sans JP', sans-serif; background: var(--bg); color: var(--text-primary); min-height: 100vh; }
+
+  /* Setup Banner */
+  .setup-banner {
+    background: #FEF3DC; border-bottom: 1px solid #F5D88A;
+    padding: 12px 28px; display: flex; align-items: center; gap: 10px;
+    font-size: 13px; color: #8A5206;
+  }
+  .setup-banner strong { font-weight: 700; }
+  .setup-banner a { color: #8A5206; font-weight: 700; }
+  .setup-banner.hidden { display: none; }
+
+  /* Header */
+  .header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 18px 28px; display: flex; align-items: center;
+    justify-content: space-between; flex-wrap: wrap; gap: 12px;
+    position: sticky; top: 0; z-index: 50;
+  }
+  .header-left { display: flex; align-items: center; gap: 14px; }
+  .header-icon { width: 36px; height: 36px; border-radius: 10px; background: #1A1917; display: flex; align-items: center; justify-content: center; }
+  .header-icon svg { width: 18px; height: 18px; fill: none; stroke: #fff; stroke-width: 2; }
+  .header-title { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+  .header-meta { font-size: 12px; color: var(--text-muted); }
+  .header-right { display: flex; align-items: center; gap: 8px; }
+
+  .sync-status { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
+  .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
+  .sync-dot.ok { background: #1D9E75; }
+  .sync-dot.err { background: #E24B4A; }
+  .sync-dot.loading { background: #D4860A; animation: blink 1s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .btn-primary {
+    display: flex; align-items: center; gap: 6px;
+    background: #1A1917; color: #fff; border: none; border-radius: var(--radius-sm);
+    padding: 8px 14px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: inherit;
+    transition: background 0.15s;
+  }
+  .btn-primary:hover { background: #333; }
+  .btn-primary svg { width: 14px; height: 14px; }
+  .btn-secondary {
+    display: flex; align-items: center; gap: 6px;
+    background: transparent; color: var(--text-secondary);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 7px 13px; font-size: 13px; cursor: pointer; font-family: inherit;
+    transition: all 0.15s;
+  }
+  .btn-secondary:hover { border-color: var(--border-hover); color: var(--text-primary); }
+
+  .summary { padding: 18px 28px 0; display: flex; gap: 10px; flex-wrap: wrap; }
+  .sum-chip { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 100px; padding: 5px 12px; font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+  .sum-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .sum-count { font-weight: 700; color: var(--text-primary); }
+
+  .filter-wrap { padding: 14px 28px 0; display: flex; gap: 6px; flex-wrap: wrap; }
+  .filter-btn { font-size: 12px; font-weight: 500; font-family: inherit; padding: 5px 13px; border-radius: 100px; border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); cursor: pointer; transition: all 0.12s; }
+  .filter-btn:hover { border-color: var(--border-hover); color: var(--text-primary); }
+  .filter-btn.active { background: #1A1917; color: #fff; border-color: #1A1917; }
+
+  .grid-wrap { padding: 20px 28px 40px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+
+  /* Loading skeleton */
+  .skeleton { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; min-height: 120px; animation: shimmer 1.2s infinite; }
+  @keyframes shimmer { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+  /* Card */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; cursor: pointer; transition: box-shadow 0.18s, border-color 0.18s, transform 0.12s; box-shadow: var(--shadow); position: relative; overflow: hidden; }
+  .card:hover { box-shadow: var(--shadow-hover); border-color: var(--border-hover); transform: translateY(-1px); }
+  .card.editing { border-color: #1A1917; }
+  .card-accent { position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: var(--radius) var(--radius) 0 0; }
+  .card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+  .card-name { font-size: 14px; font-weight: 700; margin-bottom: 2px; letter-spacing: -0.01em; }
+  .card-role { font-size: 11px; color: var(--text-muted); }
+  .badges { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-bottom: 10px; }
+  .status-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 100px; }
+  .badge-dot { width: 5px; height: 5px; border-radius: 50%; }
+  .ot-badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 500; padding: 3px 8px; border-radius: 100px; border: 1px solid; }
+  .card-comment { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+  .card-comment.empty { color: var(--text-muted); font-style: italic; }
+  .card-updated { font-size: 10px; color: var(--text-muted); margin-top: 8px; }
+
+  /* Edit panel */
+  .edit-panel { display: none; margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px; }
+  .edit-panel.open { display: block; }
+  .ep-label { font-size: 10px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px; }
+  .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 12px; }
+  .s-opt { font-size: 11px; font-weight: 500; font-family: inherit; padding: 6px 4px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; text-align: center; transition: all 0.12s; }
+  .s-opt:hover { border-color: var(--border-hover); }
+  .s-opt.sel { font-weight: 700; }
+  .ot-row { display: flex; gap: 5px; margin-bottom: 12px; }
+  .ot-opt { flex: 1; font-size: 11px; font-weight: 500; font-family: inherit; padding: 6px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; text-align: center; transition: all 0.12s; }
+  .ot-opt:hover { border-color: var(--border-hover); }
+  .ot-opt.sel { font-weight: 700; }
+  .cmt-input { width: 100%; font-size: 12px; font-family: inherit; padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: #FAFAF8; color: var(--text-primary); resize: none; margin-bottom: 8px; outline: none; transition: border-color 0.12s; }
+  .cmt-input:focus { border-color: #1A1917; }
+  .save-btn { width: 100%; font-size: 12px; font-weight: 700; font-family: inherit; padding: 7px; border-radius: var(--radius-sm); border: none; background: #1A1917; color: #fff; cursor: pointer; transition: background 0.12s; }
+  .save-btn:hover { background: #333; }
+  .saving-msg { font-size: 11px; color: #1D9E75; text-align: center; margin-top: 5px; display: none; }
+
+  /* 社外スタイル */
+  .location-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 100px; background: #6B6A66; color: #fff; }
+  .loc-row { display: flex; gap: 5px; margin-bottom: 12px; }
+  .loc-opt { flex: 1; font-size: 11px; font-weight: 500; font-family: inherit; padding: 6px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; text-align: center; transition: all 0.12s; }
+  .loc-opt:hover { border-color: var(--border-hover); }
+  .loc-opt.sel { font-weight: 700; }
+  .ep-out-disabled { opacity: 0.38; pointer-events: none; }
+  .ep-out-disabled .s-opt,
+  .ep-out-disabled .ot-opt { text-decoration: line-through; }
+  .badge-out { text-decoration: line-through !important; opacity: 0.55; }
+
+  /* Modals */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 200; align-items: center; justify-content: center; backdrop-filter: blur(3px); }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border-radius: var(--radius); padding: 24px; width: 340px; box-shadow: 0 20px 60px rgba(0,0,0,0.18); animation: modal-in 0.18s ease; }
+  @keyframes modal-in { from{opacity:0;transform:scale(0.95) translateY(8px)} to{opacity:1;transform:none} }
+  .modal h2 { font-size: 16px; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.02em; }
+  .modal-desc { font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.6; }
+  .modal-label { font-size: 11px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 5px; }
+  .modal-input { width: 100%; font-size: 13px; font-family: inherit; padding: 9px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: #FAFAF8; color: var(--text-primary); margin-bottom: 12px; outline: none; transition: border-color 0.12s; }
+  .modal-input:focus { border-color: #1A1917; }
+  .modal-btns { display: flex; gap: 8px; margin-top: 4px; }
+  .btn-cancel { flex: 1; font-size: 13px; font-weight: 500; font-family: inherit; padding: 9px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; }
+  .btn-confirm { flex: 2; font-size: 13px; font-weight: 700; font-family: inherit; padding: 9px; border-radius: var(--radius-sm); border: none; background: #1A1917; color: #fff; cursor: pointer; transition: background 0.12s; }
+  .btn-confirm:hover { background: #333; }
+
+  /* GAS Setup modal */
+  .gas-url-hint { font-size: 11px; color: var(--text-muted); background: #F5F4F0; border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 12px; line-height: 1.7; word-break: break-all; }
+  .gas-url-hint code { font-family: monospace; color: #1A1917; }
+
+  /* パスワードモーダル */
+  .pw-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 300; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+  .pw-modal-overlay.open { display: flex; }
+  .pw-modal { background: var(--color-background-primary, #fff); border-radius: var(--radius); padding: 28px 24px 20px; width: 320px; box-shadow: 0 20px 60px rgba(0,0,0,0.22); animation: modal-in 0.18s ease; }
+  .pw-modal-icon { width: 44px; height: 44px; border-radius: 50%; background: #1A1917; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; font-size: 20px; }
+  .pw-modal h2 { font-size: 16px; font-weight: 700; margin: 0 0 6px; text-align: center; color: var(--text-primary, #1A1917); letter-spacing: -0.02em; }
+  .pw-modal-desc { font-size: 12px; color: var(--text-secondary, #6B6A66); margin: 0 0 18px; text-align: center; line-height: 1.6; }
+  .pw-label { font-size: 11px; font-weight: 700; color: var(--text-muted, #A8A7A3); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 5px; }
+  .pw-input { width: 100%; font-size: 15px; font-family: inherit; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border, rgba(0,0,0,0.08)); background: #FAFAF8; color: var(--text-primary, #1A1917); margin-bottom: 6px; outline: none; transition: border-color 0.12s; letter-spacing: 0.08em; box-sizing: border-box; }
+  .pw-input:focus { border-color: #1A1917; }
+  .pw-error { font-size: 12px; color: #E24B4A; margin: 0 0 10px; min-height: 18px; text-align: center; }
+  .pw-btns { display: flex; gap: 8px; margin-top: 4px; }
+  .pw-cancel { flex: 1; font-size: 13px; font-weight: 500; font-family: inherit; padding: 9px; border-radius: var(--radius-sm); border: 1px solid var(--border, rgba(0,0,0,0.08)); background: transparent; color: var(--text-secondary, #6B6A66); cursor: pointer; }
+  .pw-confirm { flex: 2; font-size: 13px; font-weight: 700; font-family: inherit; padding: 9px; border-radius: var(--radius-sm); border: none; background: #1A1917; color: #fff; cursor: pointer; transition: background 0.12s; }
+  .pw-confirm:hover { background: #333; }
+  .pw-input.error { border-color: #E24B4A; animation: shake 0.3s ease; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+
+  @media (max-width: 600px) {
+    .header, .summary, .filter-wrap, .grid-wrap { padding-left: 16px; padding-right: 16px; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+    .setup-banner { padding: 10px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ★★★ GAS URLをここに設定してください ★★★ -->
+<!-- 下の '' の中にGASのウェブアプリURLを貼り付けてください -->
+<script>
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbz-v1vllPm4KFz50Vl7bKsLaYcEhp39Y5A0K2PA14xPs0KMAOMgUr7-1BEEPJug0qoE/exec';
+  // 例: const GAS_URL = 'https://script.google.com/macros/s/AKfy.../exec';
+</script>
+<!-- ★★★★★★★★★★★★★★★★★★★★★★★ -->
+
+<div class="setup-banner" id="setup-banner">
+  ⚠️ <strong>初期設定が必要です：</strong> GAS URLが未設定です。右上の「⚙ GAS設定」ボタンからURLを入力してください。
+  設定方法がわからない場合は <strong>README（手順書）</strong> を確認してください。
+</div>
+
+<div class="header">
+  <div class="header-left">
+    <div class="header-icon">
+      <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><circle cx="18" cy="9" r="2"/><path d="M21 21v-1a3 3 0 0 0-3-3h-1"/></svg>
+    </div>
+    <div>
+      <div class="header-title">繁忙ボード</div>
+      <div class="header-meta" id="header-meta">読み込み中...</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="sync-status" id="sync-status">
+      <span class="sync-dot loading" id="sync-dot"></span>
+      <span id="sync-label">接続中...</span>
+    </div>
+    <button class="btn-secondary" onclick="openGasModal()">⚙ GAS設定</button>
+    <button class="btn-primary" onclick="openAddModal()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      メンバー追加
+    </button>
+  </div>
+</div>
+
+<div class="summary" id="summary"></div>
+<div class="filter-wrap" id="filter-wrap"></div>
+<div class="grid-wrap"><div class="grid" id="grid"></div></div>
+
+<!-- GAS設定モーダル -->
+<div class="modal-overlay" id="gas-modal" onclick="maybeClose(event,'gas-modal')">
+  <div class="modal">
+    <h2>⚙ GAS URL 設定</h2>
+    <p class="modal-desc">Google Apps Script でデプロイしたウェブアプリのURLを入力してください。</p>
+    <div class="gas-url-hint">
+      URLの形式：<br>
+      <code>https://script.google.com/macros/s/【英数字】/exec</code>
+    </div>
+    <div class="modal-label">ウェブアプリURL</div>
+    <input class="modal-input" id="gas-url-input" placeholder="https://script.google.com/macros/s/.../exec" />
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('gas-modal')">キャンセル</button>
+      <button class="btn-confirm" onclick="saveGasUrl()">保存して接続</button>
+    </div>
+  </div>
+</div>
+
+<!-- メンバー追加モーダル -->
+<div class="modal-overlay" id="add-modal" onclick="maybeClose(event,'add-modal')">
+  <div class="modal">
+    <h2>メンバーを追加</h2>
+    <p class="modal-desc">追加後、スプレッドシートにも自動で保存されます。</p>
+    <div class="modal-label">名前</div>
+    <input class="modal-input" id="new-name" placeholder="山田 太郎" />
+    <div class="modal-label">役職・担当</div>
+    <input class="modal-input" id="new-role" placeholder="エンジニア" />
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal('add-modal')">キャンセル</button>
+      <button class="btn-confirm" id="add-confirm-btn" onclick="addMember()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- パスワード認証モーダル -->
+<div class="pw-modal-overlay" id="pw-modal">
+  <div class="pw-modal">
+    <div class="pw-modal-icon">🔒</div>
+    <h2>管理者認証</h2>
+    <p class="pw-modal-desc">この操作を行うにはパスワードが必要です</p>
+    <div class="pw-label">パスワード</div>
+    <input class="pw-input" id="pw-input" type="password" placeholder="パスワードを入力" autocomplete="off" />
+    <p class="pw-error" id="pw-error"></p>
+    <div class="pw-btns">
+      <button class="pw-cancel" onclick="closePwModal()">キャンセル</button>
+      <button class="pw-confirm" onclick="submitPassword()">認証する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STATUS = [
+  { key:'ok',     label:'余裕あり',    dot:'#1D9E75', bg:'#E4F7EF', text:'#0A6645' },
+  { key:'slight', label:'やや余裕あり', dot:'#639922', bg:'#EDF5DC', text:'#3B6D11' },
+  { key:'busy',   label:'やや忙しい',  dot:'#D4860A', bg:'#FEF3DC', text:'#8A5206' },
+  { key:'full',   label:'余裕なし',    dot:'#E24B4A', bg:'#FDEAEA', text:'#A32D2D' },
+];
+const OT = [
+  { key:'yes', label:'残業OK', bg:'#EAF2FD', text:'#1A5FA8', border:'#C0D9F5' },
+  { key:'no',  label:'残業NG', bg:'#F5F5F4', text:'#6B6A66', border:'#DDDCDA' },
+];
+const LOC = [
+  { key:'in',  label:'社内', selBg:'#1A1917', selColor:'#fff', selBorder:'#1A1917' },
+  { key:'out', label:'社外', selBg:'#6B6A66', selColor:'#fff', selBorder:'#6B6A66' },
+];
+const AVATARS = [
+  ['#EEF0FD','#534AB7'],['#E4F7EF','#0A6645'],['#FDEAEA','#A32D2D'],
+  ['#FEF3DC','#8A5206'],['#EAF2FD','#1A5FA8'],['#EDF5DC','#3B6D11'],
+  ['#FBE9F4','#8C2E63'],['#F5F4F0','#444441'],
+];
+
+let members = [];
+let filterKey = 'all';
+let editingId = null;
+let nextId = 1;
+let gasUrl = '';
+
+// GAS URL: HTMLのscriptタグの値 or localStorageの値を優先
+function resolveGasUrl() {
+  const stored = localStorage.getItem('gas_url');
+  if (stored) return stored;
+  if (typeof GAS_URL !== 'undefined' && GAS_URL) return GAS_URL;
+  return '';
+}
+
+function formatUpdated(val) {
+  if (!val || val === '未更新' || val === 'サンプル') return val || '未更新';
+  // すでに整形済み（例：4/6 11:20）はそのまま返す
+  if (/^\d+\/\d+\s\d+:\d+$/.test(val)) return val;
+  // Date文字列やISO形式はDateオブジェクトに変換して整形
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return val;
+  return (d.getMonth()+1) + '/' + d.getDate() + ' ' +
+    String(d.getHours()).padStart(2,'0') + ':' +
+    String(d.getMinutes()).padStart(2,'0');
+}
+
+function nowStr() {
+  const d = new Date();
+  return (d.getMonth()+1)+'/'+d.getDate()+' '+
+    String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+function initials(name) {
+  const s = name.replace(/\s+/g,'');
+  return s.length >= 2 ? s[0]+s[s.length-1] : s[0]||'?';
+}
+function avatarColors(id) { return AVATARS[(Number(id)-1) % AVATARS.length]; }
+function stopProp(e) { e.stopPropagation(); }
+
+function setSyncStatus(state) {
+  const dot = document.getElementById('sync-dot');
+  const label = document.getElementById('sync-label');
+  dot.className = 'sync-dot ' + state;
+  const map = { ok:'同期済み', err:'オフライン（ローカル動作中）', loading:'同期中...', none:'未接続' };
+  label.textContent = map[state] || state;
+}
+
+async function fetchMembers() {
+  gasUrl = resolveGasUrl();
+  if (!gasUrl) {
+    setSyncStatus('none');
+    loadFallback();
+    return;
+  }
+  setSyncStatus('loading');
+  try {
+    const res = await fetch(gasUrl, { method:'GET', redirect:'follow' });
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) {
+      members = data.map(r => ({
+  	id: r.id, name: r.name, role: r.role,
+  	status: r.status || 'ok', ot: r.ot || 'yes',
+  	location: r.location || 'in',
+  	comment: r.comment || '', updated: formatUpdated(r.updated)
+      }));
+      nextId = Math.max(...members.map(m => Number(m.id) || 0)) + 1;
+      setSyncStatus('ok');
+      document.getElementById('setup-banner').classList.add('hidden');
+    } else {
+      loadFallback();
+      setSyncStatus('ok');
+      document.getElementById('setup-banner').classList.add('hidden');
+    }
+  } catch(e) {
+    setSyncStatus('err');
+    loadFallback();
+  }
+  render();
+}
+
+function loadFallback() {
+  if (members.length > 0) return;
+  members = [
+    { id:1,  name:'山田 太郎',   role:'フロントエンド', status:'ok',     ot:'yes', location:'in',  comment:'今週は余裕あります', updated:'サンプル' },
+    { id:2,  name:'田中 花子',   role:'バックエンド',   status:'busy',   ot:'no',  location:'in',  comment:'リリース対応中',     updated:'サンプル' },
+    { id:3,  name:'鈴木 一郎',   role:'デザイナー',     status:'ok',     ot:'yes', location:'out', comment:'客先訪問中',          updated:'サンプル' },
+    { id:4,  name:'佐藤 美咲',   role:'PM',             status:'full',   ot:'no',  location:'in',  comment:'週末まで対応不可',   updated:'サンプル' },
+    { id:5,  name:'伊藤 健二',   role:'インフラ',       status:'slight', ot:'yes', location:'in',  comment:'来週は余裕出る予定', updated:'サンプル' },
+  ];
+  nextId = 6;
+}
+
+async function pushUpdate(member) {
+  if (!gasUrl) return;
+  try {
+    await fetch(gasUrl, {
+      method:'POST', redirect:'follow',
+      body: JSON.stringify({ action:'update', ...member })
+    });
+    setSyncStatus('ok');
+  } catch(e) { setSyncStatus('err'); }
+}
+
+async function pushAdd(member) {
+  if (!gasUrl) return;
+  try {
+    await fetch(gasUrl, {
+      method:'POST', redirect:'follow',
+      body: JSON.stringify({ action:'add', ...member })
+    });
+    setSyncStatus('ok');
+  } catch(e) { setSyncStatus('err'); }
+}
+
+function renderSummary() {
+  document.getElementById('summary').innerHTML =
+    STATUS.map(s => {
+      const n = members.filter(m => m.status === s.key && m.location !== 'out').length;
+      return `<div class="sum-chip"><span class="sum-dot" style="background:${s.dot}"></span>${s.label}<span class="sum-count">${n}</span>人</div>`;
+    }).join('') +
+    `<div class="sum-chip" style="margin-left:4px">残業OK <span class="sum-count">${members.filter(m=>m.ot==='yes' && m.location!=='out').length}</span>人</div>` +
+    `<div class="sum-chip" style="margin-left:4px;background:#F5F4F0;border-color:#6B6A66">🌐 社外 <span class="sum-count">${members.filter(m=>m.location==='out').length}</span>人</div>`;
+}
+
+function renderFilters() {
+  const items = [
+    { key:'all', label:'全員表示' },
+    ...STATUS.map(s=>({key:s.key, label:s.label})),
+    { key:'out', label:'🌐 社外' }
+  ];
+  document.getElementById('filter-wrap').innerHTML = items.map(f =>
+    `<button class="filter-btn${filterKey===f.key?' active':''}" onclick="setFilter('${f.key}')">${f.label}</button>`
+  ).join('');
+}
+
+function setFilter(k) { filterKey = k; render(); }
+
+function render() {
+  renderSummary();
+  renderFilters();
+  document.getElementById('header-meta').textContent =
+    `${members.length}名 · 最終更新 ${nowStr()}`;
+
+  const visible = members.filter(m => {
+    if (filterKey === 'all') return true;
+    if (filterKey === 'out') return m.location === 'out';
+    return m.status === filterKey;
+  });
+  document.getElementById('grid').innerHTML = visible.map(m => {
+    const st = STATUS.find(s => s.key === m.status) || STATUS[0];
+    const ot = OT.find(o => o.key === m.ot) || OT[0];
+    const [abg, atx] = avatarColors(m.id);
+    const isEditing = String(editingId) === String(m.id);
+    const isOut = (m.location || 'in') === 'out';
+    const outDisabled = isOut ? ' ep-out-disabled' : '';
+    const badgeOut = isOut ? ' badge-out' : '';
+    const accentColor = isOut ? '#A8A7A3' : st.dot;
+
+    const sOpts = STATUS.map(s =>
+      `<button class="s-opt${m.status===s.key?' sel':''}"
+        style="${m.status===s.key?`background:${s.bg};color:${s.text};border-color:${s.dot}`:''}"
+        onclick="setStatus('${m.id}','${s.key}',event)">${s.label}</button>`
+    ).join('');
+    const oOpts = OT.map(o =>
+      `<button class="ot-opt${m.ot===o.key?' sel':''}"
+        style="${m.ot===o.key?`background:${o.bg};color:${o.text};border-color:${o.border}`:''}"
+        onclick="setOt('${m.id}','${o.key}',event)">${o.label}</button>`
+    ).join('');
+    const locOpts = LOC.map(l =>
+      `<button class="loc-opt${(m.location||'in')===l.key?' sel':''}"
+        style="${(m.location||'in')===l.key?`background:${l.selBg};color:${l.selColor};border-color:${l.selBorder}`:''}"
+        onclick="setLocation('${m.id}','${l.key}',event)">${l.label}</button>`
+    ).join('');
+
+    return `
+    <div class="card${isEditing?' editing':''}" id="card-${m.id}" onclick="toggleEdit('${m.id}')">
+      <div class="card-accent" style="background:${accentColor}"></div>
+      <div class="card-top">
+        <div class="avatar" style="background:${abg};color:${atx}">${initials(m.name)}</div>
+        <div>
+          <div class="card-name">${m.name}</div>
+          <div class="card-role">${m.role}</div>
+        </div>
+      </div>
+      <div class="badges">
+        ${isOut ? '<span class="location-badge">🌐 社外</span>' : ''}
+        <span class="status-badge${badgeOut}" style="background:${st.bg};color:${st.text}">
+          <span class="badge-dot" style="background:${st.dot}"></span>${st.label}
+        </span>
+        <span class="ot-badge${badgeOut}" style="background:${ot.bg};color:${ot.text};border-color:${ot.border}">${ot.label}</span>
+      </div>
+      <div class="card-comment${!m.comment?' empty':''}">${m.comment||'コメントなし'}</div>
+      <div class="card-updated">更新: ${m.updated}</div>
+      <div class="edit-panel${isEditing?' open':''}" onclick="stopProp(event)">
+        <div class="ep-label">勤務場所</div>
+        <div class="loc-row">${locOpts}</div>
+        <div class="ep-label">ステータス変更</div>
+        <div class="status-grid${outDisabled}">${sOpts}</div>
+        <div class="ep-label">残業可否</div>
+        <div class="ot-row${outDisabled}">${oOpts}</div>
+        <div class="ep-label">一言メモ</div>
+        <textarea class="cmt-input" id="cmt-${m.id}" rows="2" placeholder="状況を一言..." onclick="stopProp(event)">${m.comment}</textarea>
+        <button class="save-btn" onclick="saveComment('${m.id}',event)">保存してスプレッドシートに同期</button>
+        <div class="saving-msg" id="saving-${m.id}">✓ 保存しました</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleEdit(id) {
+  const sid = String(id);
+  if (String(editingId) === sid) {
+    editingId = null;
+    const card = document.getElementById('card-' + sid);
+    if (card) {
+      card.classList.remove('editing');
+      const panel = card.querySelector('.edit-panel');
+      if (panel) panel.classList.remove('open');
+    }
+  } else {
+    if (editingId !== null) {
+      const prev = document.getElementById('card-' + String(editingId));
+      if (prev) {
+        prev.classList.remove('editing');
+        const pp = prev.querySelector('.edit-panel');
+        if (pp) pp.classList.remove('open');
+      }
+    }
+    editingId = sid;
+    const card = document.getElementById('card-' + sid);
+    if (card) {
+      card.classList.add('editing');
+      const panel = card.querySelector('.edit-panel');
+      if (panel) panel.classList.add('open');
+      setTimeout(() => card.scrollIntoView({ behavior:'smooth', block:'nearest' }), 50);
+    }
+  }
+}
+
+function setStatus(id, key, e) {
+  e.stopPropagation();
+  const m = members.find(m => String(m.id) === String(id));
+  if (!m) return;
+  m.status = key;
+  m.updated = nowStr();
+  setSyncStatus('loading');
+  pushUpdate(m);
+  // ステータスボタンの選択状態を更新
+  const card = document.getElementById('card-' + String(id));
+  if (card) {
+    card.querySelector('.card-accent').style.background = STATUS.find(s=>s.key===key).dot;
+    const st = STATUS.find(s=>s.key===key);
+    const badge = card.querySelector('.status-badge');
+    badge.style.background = st.bg;
+    badge.style.color = st.text;
+    badge.querySelector('.badge-dot').style.background = st.dot;
+    badge.childNodes[1].textContent = st.label;
+    card.querySelectorAll('.s-opt').forEach(btn => {
+      const bkey = btn.getAttribute('onclick').match(/'([^']+)','([^']+)'/)[2];
+      const bs = STATUS.find(s=>s.key===bkey);
+      if (bkey === key) {
+        btn.classList.add('sel');
+        btn.style.background = bs.bg;
+        btn.style.color = bs.text;
+        btn.style.borderColor = bs.dot;
+      } else {
+        btn.classList.remove('sel');
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.style.borderColor = '';
+      }
+    });
+    card.querySelector('.card-updated').textContent = '更新: ' + m.updated;
+  }
+}
+
+function setOt(id, key, e) {
+  e.stopPropagation();
+  const m = members.find(m => String(m.id) === String(id));
+  if (!m) return;
+  m.ot = key;
+  m.updated = nowStr();
+  setSyncStatus('loading');
+  pushUpdate(m);
+  // 残業ボタンの選択状態を更新
+  const card = document.getElementById('card-' + String(id));
+  if (card) {
+    const ot = OT.find(o=>o.key===key);
+    const badge = card.querySelector('.ot-badge');
+    badge.style.background = ot.bg;
+    badge.style.color = ot.text;
+    badge.style.borderColor = ot.border;
+    badge.textContent = ot.label;
+    card.querySelectorAll('.ot-opt').forEach(btn => {
+      const bkey = btn.getAttribute('onclick').match(/'([^']+)','([^']+)'/)[2];
+      const bo = OT.find(o=>o.key===bkey);
+      if (bkey === key) {
+        btn.classList.add('sel');
+        btn.style.background = bo.bg;
+        btn.style.color = bo.text;
+        btn.style.borderColor = bo.border;
+      } else {
+        btn.classList.remove('sel');
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.style.borderColor = '';
+      }
+    });
+    card.querySelector('.card-updated').textContent = '更新: ' + m.updated;
+  }
+}
+
+function setLocation(id, key, e) {
+  e.stopPropagation();
+  const m = members.find(m => String(m.id) === String(id));
+  if (!m) return;
+  m.location = key;
+  m.updated = nowStr();
+  setSyncStatus('loading');
+  pushUpdate(m);
+  render();
+}
+
+function saveComment(id, e) {
+  e.stopPropagation();
+  const m = members.find(m => String(m.id) === String(id));
+  if (!m) return;
+  m.comment = (document.getElementById('cmt-'+id)||{}).value?.trim() || '';
+  m.updated = nowStr();
+  setSyncStatus('loading');
+  pushUpdate(m).then(() => {
+    const msg = document.getElementById('saving-'+id);
+    if (msg) { msg.style.display = 'block'; setTimeout(() => { msg.style.display='none'; }, 2000); }
+  });
+  editingId = null;
+  render();
+}
+
+// GAS設定
+function openGasModal() {
+  requestPassword('gas');
+}
+function _openGasModal() {
+  document.getElementById('gas-url-input').value = resolveGasUrl();
+  document.getElementById('gas-modal').classList.add('open');
+  document.getElementById('gas-url-input').focus();
+}
+function saveGasUrl() {
+  const url = document.getElementById('gas-url-input').value.trim();
+  if (!url) return;
+  localStorage.setItem('gas_url', url);
+  gasUrl = url;
+  closeModal('gas-modal');
+  members = [];
+  document.getElementById('grid').innerHTML = Array(6).fill('<div class="skeleton"></div>').join('');
+  fetchMembers();
+}
+
+// メンバー追加
+function openAddModal() {
+  requestPassword('add');
+}
+function _openAddModal() {
+  document.getElementById('add-modal').classList.add('open');
+  document.getElementById('new-name').focus();
+}
+async function addMember() {
+  const name = document.getElementById('new-name').value.trim();
+  const role = document.getElementById('new-role').value.trim();
+  if (!name) { document.getElementById('new-name').focus(); return; }
+  const btn = document.getElementById('add-confirm-btn');
+  btn.textContent = '追加中...'; btn.disabled = true;
+  const m = { id: nextId++, name, role: role||'未設定', status:'ok', ot:'yes', location:'in', comment:'', updated: nowStr() };
+  members.push(m);
+  await pushAdd(m);
+  document.getElementById('new-name').value = '';
+  document.getElementById('new-role').value = '';
+  btn.textContent = '追加する'; btn.disabled = false;
+  closeModal('add-modal');
+  render();
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function maybeClose(e, id) { if (e.target === document.getElementById(id)) closeModal(id); }
+
+// 自動リロード（30秒ごと）
+setInterval(() => {
+  if (!editingId) fetchMembers();
+}, 30000);
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeModal('gas-modal');
+    closeModal('add-modal');
+    closePwModal();
+    editingId = null;
+    render();
+  }
+  if (e.key === 'Enter' && document.getElementById('pw-modal').classList.contains('open')) {
+    submitPassword();
+  }
+});
+
+// ===== パスワード認証 =====
+const ADMIN_PASSWORD = 'yone6066';
+let pendingAction = null;
+
+function requestPassword(action) {
+  pendingAction = action;
+  document.getElementById('pw-input').value = '';
+  document.getElementById('pw-error').textContent = '';
+  document.getElementById('pw-input').classList.remove('error');
+  document.getElementById('pw-modal').classList.add('open');
+  setTimeout(() => document.getElementById('pw-input').focus(), 50);
+}
+
+function submitPassword() {
+  const val = document.getElementById('pw-input').value;
+  if (val === ADMIN_PASSWORD) {
+    const action = pendingAction; // 先にactionを保存
+    closePwModal();               // この中でpendingActionがリセットされる
+    setTimeout(() => {            // モーダルが閉じてから次を開く
+      if (action === 'gas') _openGasModal();
+      if (action === 'add') _openAddModal();
+    }, 50);
+  } else {
+    const input = document.getElementById('pw-input');
+    const err = document.getElementById('pw-error');
+    input.classList.remove('error');
+    void input.offsetWidth; // reflow for animation reset
+    input.classList.add('error');
+    err.textContent = 'パスワードが違います。もう一度お試しください。';
+    input.value = '';
+    setTimeout(() => input.focus(), 50);
+  }
+}
+
+function closePwModal() {
+  document.getElementById('pw-modal').classList.remove('open');
+  document.getElementById('pw-input').value = '';
+  document.getElementById('pw-error').textContent = '';
+  document.getElementById('pw-input').classList.remove('error');
+  pendingAction = null;
+}
+
+// 初期表示
+document.getElementById('grid').innerHTML = Array(6).fill('<div class="skeleton"></div>').join('');
+fetchMembers();
+</script>
+</body>
+</html>
