@@ -66,10 +66,21 @@
   }
   .btn-secondary:hover { border-color: var(--border-hover); color: var(--text-primary); }
 
-  .summary { padding: 18px 28px 0; display: flex; gap: 10px; flex-wrap: wrap; }
+  .summary { padding: 18px 28px 0; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
   .sum-chip { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 100px; padding: 5px 12px; font-size: 12px; color: var(--text-secondary); font-weight: 500; }
   .sum-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
   .sum-count { font-weight: 700; color: var(--text-primary); }
+
+  /* 凡例（背景色の意味） — 常時表示 */
+  .legend-bar { padding: 12px 28px 0; display: flex; align-items: center; gap: 10px 18px; flex-wrap: wrap; }
+  .legend-title { font-size: 11px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.06em; text-transform: uppercase; }
+  .legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+  .legend-swatch { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--border); flex-shrink: 0; }
+  .legend-swatch.s-normal { background: #FFFFFF; }
+  .legend-swatch.s-1 { background: #FFF5F5; }
+  .legend-swatch.s-2 { background: #FECACA; border-color: rgba(220, 38, 38, 0.25); }
+  .legend-swatch.s-3 { background: #FCA5A5; border-color: #DC2626; }
+  .legend-note { font-size: 11px; color: var(--text-muted); }
 
   .filter-wrap { padding: 14px 28px 0; display: flex; gap: 6px; flex-wrap: wrap; }
   .filter-btn { font-size: 12px; font-weight: 500; font-family: inherit; padding: 5px 13px; border-radius: 100px; border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary); cursor: pointer; transition: all 0.12s; }
@@ -84,9 +95,17 @@
   @keyframes shimmer { 0%,100%{opacity:1} 50%{opacity:0.5} }
 
   /* Card */
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; cursor: pointer; transition: box-shadow 0.18s, border-color 0.18s, transform 0.12s; box-shadow: var(--shadow); position: relative; overflow: hidden; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; cursor: pointer; transition: box-shadow 0.18s, border-color 0.18s, transform 0.12s, background 0.18s; box-shadow: var(--shadow); position: relative; overflow: hidden; }
   .card:hover { box-shadow: var(--shadow-hover); border-color: var(--border-hover); transform: translateY(-1px); }
   .card.editing { border-color: #1A1917; }
+
+  /* 未更新アラート（更新日からの経過日数で背景色を変化） */
+  .card.stale-1 { background: #FFF5F5; }
+  .card.stale-2 { background: #FECACA; border-color: rgba(220, 38, 38, 0.25); }
+  .card.stale-3 { background: #FCA5A5; border-color: #DC2626; }
+  .card.stale-3 .card-role,
+  .card.stale-3 .card-updated { color: #7F1D1D; }
+  .card.stale-3 .card-updated { font-weight: 700; }
   .card-accent { position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: var(--radius) var(--radius) 0 0; }
   .card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
   .avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
@@ -167,7 +186,7 @@
   @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
 
   @media (max-width: 600px) {
-    .header, .summary, .filter-wrap, .grid-wrap { padding-left: 16px; padding-right: 16px; }
+    .header, .summary, .filter-wrap, .grid-wrap, .legend-bar { padding-left: 16px; padding-right: 16px; }
     .grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
     .setup-banner { padding: 10px 16px; }
   }
@@ -211,6 +230,14 @@
 </div>
 
 <div class="summary" id="summary"></div>
+<div class="legend-bar">
+  <div class="legend-title">カードの背景色</div>
+  <div class="legend-item"><span class="legend-swatch s-normal"></span>本日更新済み</div>
+  <div class="legend-item"><span class="legend-swatch s-1"></span>1〜2日 未更新</div>
+  <div class="legend-item"><span class="legend-swatch s-2"></span>3〜4日 未更新</div>
+  <div class="legend-item"><span class="legend-swatch s-3"></span>5日以上 未更新</div>
+  <div class="legend-note">※ メール未登録者は対象外</div>
+</div>
 <div class="filter-wrap" id="filter-wrap"></div>
 <div class="grid-wrap"><div class="grid" id="grid"></div></div>
 
@@ -316,6 +343,37 @@ function nowStr() {
   return (d.getMonth()+1)+'/'+d.getDate()+' '+
     String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
 }
+
+// updated 文字列から Date を復元。'M/D HH:MM' は年をまたぐケースも考慮。
+function parseUpdatedDate(val) {
+  if (!val || val === '未更新' || val === 'サンプル') return null;
+  const m = typeof val === 'string' && val.match(/^(\d+)\/(\d+)\s+(\d+):(\d+)$/);
+  if (m) {
+    const now = new Date();
+    const d = new Date(now.getFullYear(), parseInt(m[1])-1, parseInt(m[2]), parseInt(m[3]), parseInt(m[4]));
+    if (d.getTime() > now.getTime() + 24*60*60*1000) d.setFullYear(now.getFullYear() - 1);
+    return d;
+  }
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// 更新経過日数から警告レベルを返す (0:通常 / 1:1-2日 / 2:3-4日 / 3:5日以上 or 未更新)
+// email が未設定の人はリマインダー対象外のため常に 0 (色を変えない)
+function getStaleLevel(updated, email) {
+  if (!email) return 0;
+  if (updated === '未更新') return 3;
+  const d = parseUpdatedDate(updated);
+  if (!d) return 0;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const then = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const days = Math.floor((today.getTime() - then.getTime()) / (24*60*60*1000));
+  if (days >= 5) return 3;
+  if (days >= 3) return 2;
+  if (days >= 1) return 1;
+  return 0;
+}
 function initials(name) {
   const s = name.replace(/\s+/g,'');
   return s.length >= 2 ? s[0]+s[s.length-1] : s[0]||'?';
@@ -347,7 +405,8 @@ async function fetchMembers() {
   	id: r.id, name: r.name, role: r.role,
   	status: r.status || 'ok', ot: r.ot || 'yes',
   	location: r.location || 'in',
-  	comment: r.comment || '', updated: formatUpdated(r.updated)
+  	comment: r.comment || '', updated: formatUpdated(r.updated),
+  	email: r.email || ''
       }));
       nextId = Math.max(...members.map(m => Number(m.id) || 0)) + 1;
       setSyncStatus('ok');
@@ -441,6 +500,8 @@ function render() {
     const outDisabled = isOut ? ' ep-out-disabled' : '';
     const badgeOut = isOut ? ' badge-out' : '';
     const accentColor = isOut ? '#A8A7A3' : st.dot;
+    const staleLv = getStaleLevel(m.updated, m.email);
+    const staleClass = staleLv > 0 ? ' stale-' + staleLv : '';
 
     const sOpts = STATUS.map(s =>
       `<button class="s-opt${m.status===s.key?' sel':''}"
@@ -459,7 +520,7 @@ function render() {
     ).join('');
 
     return `
-    <div class="card${isEditing?' editing':''}" id="card-${m.id}" onclick="toggleEdit('${m.id}')">
+    <div class="card${isEditing?' editing':''}${staleClass}" id="card-${m.id}" onclick="toggleEdit('${m.id}')">
       <div class="card-accent" style="background:${accentColor}"></div>
       <div class="card-top">
         <div class="avatar" style="background:${abg};color:${atx}">${initials(m.name)}</div>
@@ -534,6 +595,7 @@ function setStatus(id, key, e) {
   // ステータスボタンの選択状態を更新
   const card = document.getElementById('card-' + String(id));
   if (card) {
+    card.classList.remove('stale-1','stale-2','stale-3');
     card.querySelector('.card-accent').style.background = STATUS.find(s=>s.key===key).dot;
     const st = STATUS.find(s=>s.key===key);
     const badge = card.querySelector('.status-badge');
@@ -571,6 +633,7 @@ function setOt(id, key, e) {
   // 残業ボタンの選択状態を更新
   const card = document.getElementById('card-' + String(id));
   if (card) {
+    card.classList.remove('stale-1','stale-2','stale-3');
     const ot = OT.find(o=>o.key===key);
     const badge = card.querySelector('.ot-badge');
     badge.style.background = ot.bg;

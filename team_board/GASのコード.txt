@@ -78,6 +78,8 @@ function doPost(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+const REMINDER_SUBJECT = '【繁忙ボード】本日のステータス更新をお願いします';
+
 function sendReminderEmails() {
   const day = new Date().getDay();
   if (day === 0 || day === 6) {
@@ -162,13 +164,35 @@ function sendReminderEmails() {
   unupdated.forEach(function(member) {
     GmailApp.sendEmail(
       member.email,
-      '【繁忙ボード】本日のステータス更新をお願いします',
+      REMINDER_SUBJECT,
       member.name + ' さん\n\n本日の繁忙ステータスがまだ更新されていません。\n以下のリンクからステータスを更新してください。\n\n▼ 繁忙ボード\nhttps://sites.google.com/caty-yonekura.co.jp/busy-board/%E3%83%9B%E3%83%BC%E3%83%A0\n\n※このメールは自動送信されています。'
     );
     Logger.log(member.name + ' にメール送信しました: ' + member.email);
   });
 
+  // 送信トレイに残ったリマインダーメールをゴミ箱へ移動
+  Utilities.sleep(3000); // 送信反映を少し待つ
+  try {
+    const threads = GmailApp.search('in:sent subject:"' + REMINDER_SUBJECT + '" newer_than:1d');
+    Logger.log('送信トレイ整理: ' + threads.length + ' 件のスレッドをゴミ箱へ移動します');
+    threads.forEach(function(thread) {
+      thread.moveToTrash();
+    });
+  } catch (err) {
+    Logger.log('送信トレイ整理中にエラー: ' + err);
+  }
+
   Logger.log('========== 完了 ==========');
+}
+
+// 既に送信トレイに溜まっているリマインダーメールを一括でゴミ箱へ移動する手動実行用関数
+function cleanupSentReminders() {
+  const threads = GmailApp.search('in:sent subject:"' + REMINDER_SUBJECT + '"');
+  Logger.log('対象スレッド: ' + threads.length + ' 件');
+  threads.forEach(function(thread) {
+    thread.moveToTrash();
+  });
+  Logger.log('ゴミ箱へ移動しました');
 }
 
 function testUpdate() {
